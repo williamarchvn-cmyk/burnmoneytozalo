@@ -3,6 +3,7 @@
 //   POST /api/sync  body { changes:[{c,id,r}] }         → { doc, wrote }
 import { get } from '@vercel/blob';
 import { DATA_PATH, emptyDoc, cleanChanges, mergeAndSave, json, errorResponse } from './_store.js';
+import { notifyChanges } from './_zalo.js';
 
 export const config = { maxDuration: 20 };
 
@@ -35,6 +36,9 @@ export async function POST(request) {
     const changes = cleanChanges(body && body.changes);
     if (!changes) return json({ ok: false, error: 'Thiếu danh sách thay đổi' }, 400);
     const res = await mergeAndSave(changes);
+    // Báo sang Zalo — chỉ khi dữ liệu thật sự thay đổi (gửi lại lần 2 do mạng chập chờn thì không báo trùng).
+    // Lỗi báo tin không được làm hỏng việc đồng bộ.
+    if (res.wrote) await notifyChanges(changes, res.doc, body.zalo).catch(e => console.error('[zalo]', e));
     return json({ ok: true, wrote: res.wrote, attempts: res.attempts, accepted: changes.length, doc: res.doc });
   } catch (e) {
     return errorResponse(e);

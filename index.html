@@ -669,6 +669,22 @@ function loadLocal() {
 }
 let S = loadLocal();
 
+/* Báo Zalo — cài đặt RIÊNG từng máy (không đồng bộ): tên máy hiện trong tin báo + có báo thay đổi của máy này không */
+const KZ = 'burnmoney.zalo';
+const ZALO = (() => {
+  let o = {};
+  try { o = JSON.parse(localStorage.getItem(KZ) || '{}') || {}; } catch (_) {}
+  if (typeof o.device !== 'string' || !o.device.trim()) {
+    const ua = navigator.userAgent || '';
+    const kind = /iPhone|iPad/.test(ua) ? 'iPhone' : /SM-|Samsung/i.test(ua) ? 'Samsung' : /Android/.test(ua) ? 'Android' : 'Máy tính';
+    o.device = kind + ' ' + String(Math.floor(Math.random() * 90) + 10);
+  }
+  if (typeof o.on !== 'boolean') o.on = true;
+  return o;
+})();
+const saveZalo = () => { try { localStorage.setItem(KZ, JSON.stringify(ZALO)); } catch (_) {} };
+saveZalo();
+
 /* Truy vấn */
 function budgetFor(mk) {
   if (S.budgets[mk] != null) return S.budgets[mk];
@@ -1165,7 +1181,10 @@ const Sync = (() => {
     pushing = true; firstAt = 0;
     const sent = new Map(changes.map(ch => [keyOf(ch.c, ch.id), canon(ch.c, ch.r)]));
     sent.forEach((_, k) => INFLIGHT.add(k));
-    const body = JSON.stringify({changes});
+    // Gợi ý cho máy chủ biết đây là thêm / sửa / xóa (để báo Zalo cho đúng); máy chủ vẫn tự kiểm tra lại
+    const ops = {};
+    for (const ch of changes) if (ch.c !== 's') { const k = keyOf(ch.c, ch.id); ops[k] = !alive(ch.r) ? 'del' : KNOWN.has(k) ? 'edit' : 'add'; }
+    const body = JSON.stringify({changes, zalo: ZALO.on ? {device: ZALO.device, ops} : {mute: true}});
     try {
       const res = await fetch(API, {method: 'POST', headers: {'content-type': 'application/json'}, body, cache: 'no-store', keepalive: !!opts.keepalive && body.length < 60000});
       const data = await res.json().catch(() => ({}));
@@ -1397,13 +1416,19 @@ function openSettings() {
           <div class="btn-row" style="margin-top:0"><button class="btn-line" type="button" data-act="sync">Đồng bộ ngay</button><a class="btn-line" href="/api/status" target="_blank" rel="noopener">Xem trên máy chủ</a></div>
         </section>
         <section class="st-sec">
+          <h3 class="st-h">Báo Zalo</h3>
+          <div class="field"><input id="stDevice" type="text" maxlength="24" autocomplete="off" enterkeyhint="done" placeholder="Tên máy này, ví dụ Hùng" value="${esc(ZALO.device)}"></div>
+          <label class="check"><input id="stZaloOn" type="checkbox" ${ZALO.on ? 'checked' : ''}>Báo lên Zalo khi máy này ghi, sửa, xóa</label>
+          <p class="st-note">Tên trên hiện trong tin báo để biết ai vừa ghi. Chỉ muốn biết khi <b>người khác</b> ghi thì bỏ chọn ô này trên máy của bạn. Cài đặt này riêng từng máy.</p>
+        </section>
+        <section class="st-sec">
           <h3 class="st-h">Sao lưu dữ liệu</h3>
           <p class="st-note" style="margin:0 0 10px">Dữ liệu nằm trên máy chủ và dùng chung cho mọi người có link. Xuất file để giữ một bản sao riêng của bạn.</p>
           <div class="btn-row" style="margin-top:0"><button class="btn-line" type="button" data-act="export">Xuất file</button><button class="btn-line" type="button" data-act="import">Nhập file</button></div>
           <input type="file" id="stFile" accept=".json,application/json" hidden>
         </section>
         <section class="st-sec"><button class="btn-line danger full" type="button" data-act="reset">${ICON.trash}Xóa toàn bộ dữ liệu</button></section>
-        <p class="st-foot">Burn Money 1.0</p>`;
+        <p class="st-foot">Burn Money 1.1</p>`;
       const inp = body.querySelector('#stBudget'), note = body.querySelector('#stBudgetNote');
       const showNote = () => {
         const b = budgetFor(MONTH);
@@ -1413,6 +1438,11 @@ function openSettings() {
       inp.addEventListener('blur', () => { if (!parseAmount(inp.value, false)) { const b = budgetFor(MONTH); inp.value = b ? NF.format(b) : ''; inp.dispatchEvent(new Event('input')); } });
       inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); inp.blur(); } });
       body.querySelector('#stFile').addEventListener('change', onImportFile);
+      const dev = body.querySelector('#stDevice'), zon = body.querySelector('#stZaloOn');
+      const saveDev = () => { const v = dev.value.replace(/\s+/g, ' ').trim().slice(0, 24); if (v && v !== ZALO.device) { ZALO.device = v; saveZalo(); toast('Đã đổi tên máy: ' + v); } else if (!v) dev.value = ZALO.device; };
+      dev.addEventListener('blur', saveDev);
+      dev.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); dev.blur(); } });
+      zon.addEventListener('change', () => { ZALO.on = zon.checked; saveZalo(); toast(zon.checked ? 'Máy này sẽ báo lên Zalo' : 'Máy này sẽ không báo lên Zalo'); });
     };
     ctl.render();
     body.addEventListener('click', ev => {
