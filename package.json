@@ -1,0 +1,10 @@
+{
+  "name": "burn-money",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Burn Money – quản lý chi tiêu, dữ liệu dùng chung lưu trên Vercel Blob",
+  "dependencies": {
+    "@vercel/blob": "^2.8.2"
+  }
+}
